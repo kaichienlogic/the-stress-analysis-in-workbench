@@ -1,0 +1,54 @@
+import csv
+import pyansys
+from ansys.dpf import core as dpf
+
+# 定義模型結果檔案的路徑（通常是.rst）
+result_file = r"C://pressfit93_2025018_without_tung//pressfit_files//dp0//SYS-2//MECH//file.rst"
+
+# 啟動DPF伺服器並載入結果檔案
+server = dpf.start_local_server(as_global=True)
+model = dpf.Model(result_file)
+
+# Open a CSV file to save node data with step and substep results
+output_csv = 'node_data_strain.txt'
+with open(output_csv, mode='w', newline='') as file:
+    writer = csv.writer(file)
+    
+    # Write the header row
+    writer.writerow(['Node', 'X', 'Y', 'Z', 'Step', 'Substep', 'Strain'])
+    
+    # Access the time frequency support (load step/substep info)
+    time_freq_support = model.metadata.time_freq_support
+    load_steps = time_freq_support.time_frequencies.data  # Represents load steps/substeps
+    
+    # Get the mesh data for node coordinates
+    mesh = model.metadata.meshed_region
+    
+    # Loop through all load steps and substeps
+    for step_index, load_step in enumerate(load_steps):
+        print(f"Processing Load Step {step_index + 1} (Frequency: {load_step})")
+        
+        # Extract nodal strain tensor operators
+        strain_op = model.results.elastic_strain()
+        strain_op.inputs.mesh_scoping.connect(mesh.nodes.scoping)  # 限定為節點
+        strain_op.inputs.time_scoping.connect([step_index + 1])
+        strain_fields = strain_op.outputs.fields_container()
+        
+        # Loop through all nodes in the mesh
+        for node in mesh.nodes:
+            node_id = node.id
+            x, y, z = node.coordinates
+
+            # 檢查節點是否存在於應變字段
+            if node_id in strain_fields[0].scoping.ids:
+                node_strain = strain_fields[0].get_entity_data_by_id(node_id)
+                # 分別提取應變張量的組分
+            else:
+                # 如果節點不在應變字段中，使用 None 填充
+                strain_xx = strain_yy = strain_zz = None
+                strain_xy = strain_yz = strain_xz = None
+
+            # 寫入結果到 CSV
+            writer.writerow([node_id, x, y, z, step_index + 1, load_step, node_strain])
+
+print(f"Node data with strain tensors for each step/substep has been written to {output_csv}.")
