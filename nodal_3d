@@ -1,0 +1,257 @@
+import csv
+import re
+import numpy as np
+import json
+from numpy import linalg as LA
+import math
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+
+# 文件名
+file_name = "node_data_strain.txt"
+
+# 初始化矩阵存储所有stress值
+strain_matrix = []
+node = []
+
+# 读取文件
+with open(file_name, "r", encoding="utf-8") as file:
+    reader = csv.reader(file)
+    headers = next(reader)  # 读取表头
+    for row in reader:
+        # 提取 stress 栏位的原始数据
+        strain_raw = row[-1]  # 假设 stress 是最后一列
+        # 使用正则表达式提取数值
+        strain_values = re.findall(r"-?\d+\.\d+e[+-]?\d+|-?\d+\.\d+|\d+", strain_raw)
+        strain_array = np.array(strain_values, dtype=float)  # 转换为浮点型数组
+        
+        # 将 stress_array 添加到矩阵
+        
+        # 替换原始行中 stress 数据
+        row[-1] = strain_array
+        strain_matrix.append(strain_array)
+        node_values = [float(x) for x in row[:-1]]
+        node.append(node_values)
+        #print(node)
+
+
+# 将提取的所有 stress 数据转为矩阵形式
+#stress_matrix = np.array(stress_matrix).reshape(-1, len(stress_matrix))  # 根据需求调整矩阵形状
+strain_matrix = np.array(strain_matrix)
+# 输出结果
+rs, cs = strain_matrix.shape
+print(rs)
+print(cs)
+
+node=np.array(node)
+rn, cn = node.shape
+print(rn)
+print(cn)
+
+with open('NLIST.lis', 'r') as file:
+    lines = file.readlines()
+
+# 初始化一個列表來存儲節點編號
+node_numbers = []
+
+# 遍歷每一行
+for line in lines:
+    # 使用正則表達式查找行中第一個數字
+    match = re.match(r'\s*(\d+)', line)
+    if match:
+        # 提取匹配的節點編號並添加到列表中
+        node_numbers.append(int(match.group(1)))
+
+# 輸出結果
+print(len(node_numbers))
+node_numbers = np.array(node_numbers)
+
+c=0
+for j in range(rn):
+    if node_numbers[0]==node[j,0]:
+       c=c+1
+
+print(c)
+
+#stress_matrix_3d=np.zeros((len(node_numbers), 6, c))
+
+stress_matrix_3d=np.zeros((len(node_numbers), 6, c))
+with open('stress.json', 'r') as f:
+    data = json.load(f)
+
+# 將資料還原為 NumPy 陣列
+stress_matrix_3d = np.array(data['stress'])
+
+#print(stress_matrix_3d)
+
+strain_matrix_3d=np.zeros((len(node_numbers), 6, c))
+with open('strain.json', 'r') as f:
+    data = json.load(f)
+
+# 將資料還原為 NumPy 陣列
+strain_matrix_3d = np.array(data['strain'])
+
+
+#print(strain_matrix_3d)
+
+node=int(input("the nodal number is : "))
+
+stress_2d=np.zeros((6,c))
+strain_2d=np.zeros((6,c))
+
+for j in range(len(node_numbers)):
+    for k in range(c):
+        if j == node:
+           stress_2d[0,k]=stress_matrix_3d[j,0,k]
+           stress_2d[1,k]=stress_matrix_3d[j,1,k]
+           stress_2d[2,k]=stress_matrix_3d[j,2,k]
+           stress_2d[3,k]=stress_matrix_3d[j,3,k]
+           stress_2d[4,k]=stress_matrix_3d[j,4,k]
+           stress_2d[5,k]=stress_matrix_3d[j,5,k]
+
+
+for j in range(len(node_numbers)):
+    for k in range(c):
+        if j == node:
+           strain_2d[0,k]=strain_matrix_3d[j,0,k]
+           strain_2d[1,k]=strain_matrix_3d[j,1,k]
+           strain_2d[2,k]=strain_matrix_3d[j,2,k]
+           strain_2d[3,k]=strain_matrix_3d[j,3,k]
+           strain_2d[4,k]=strain_matrix_3d[j,4,k]
+           strain_2d[5,k]=strain_matrix_3d[j,5,k]
+
+print(stress_2d)
+print(strain_2d)
+
+s1=stress_2d[1,:]
+s2=stress_2d[2,:]
+s3=stress_2d[3,:]
+von_stress=stress_2d[0,:]
+von_strain=strain_2d[0,:]
+normal_stress=stress_2d[4,:]
+shear_stress=stress_2d[5,:]
+normal_strain=strain_2d[4,:]
+shear_strain=strain_2d[5,:]
+
+
+initial_normal_stress=-2.7*10**8
+initial_shear_stress=-4.4*10**7
+initial_normal_strain=0
+initial_shear_strain=0
+initial_von_stress=math.sqrt(initial_normal_stress**2+(initial_normal_stress-initial_shear_stress)**2+(initial_normal_stress+initial_shear_stress)**2)/math.sqrt(2)
+initial_von_strain=0
+initial_s1=initial_normal_stress
+initial_s2=initial_shear_stress
+initial_s3=-initial_shear_stress
+s1 = np.concatenate(([initial_s1], s1))
+s2 = np.concatenate(([initial_s2], s2))
+s3 = np.concatenate(([initial_s3], s3))
+von_stress = np.concatenate(([initial_von_stress], von_stress))
+von_strain = np.concatenate(([initial_von_strain], von_strain))
+normal_stress=np.concatenate(([initial_normal_stress], normal_stress))
+normal_strain=np.concatenate(([initial_normal_strain], normal_strain))
+shear_stress=np.concatenate(([initial_shear_stress], shear_stress))
+shear_strain=np.concatenate(([initial_shear_strain], shear_strain))
+
+# 降伏強度 (MPa)
+yield_strength = 285*10**(6)
+
+stress_range=500*10**(6)
+
+# 定義 von Mises Criterion 的函數
+def von_mises_sigma(sigma1, sigma2, sigma3):
+    return np.sqrt(
+        0.5 * ((sigma1 - sigma2) ** 2 + (sigma2 - sigma3) ** 2 + (sigma3 - sigma1) ** 2)
+    )
+
+# 創建 Haigh-Westergaard 空間的網格
+sigma1 = np.linspace(-stress_range, stress_range, 50)
+sigma2 = np.linspace(-stress_range, stress_range, 50)
+sigma3 = np.linspace(-stress_range, stress_range, 50)
+sigma1, sigma2, sigma3 = np.meshgrid(sigma1, sigma2, sigma3)
+
+# 計算 von Mises 應力
+vm_stress = von_mises_sigma(sigma1, sigma2, sigma3)
+
+# 選取滿足 von Mises Criterion 的邊界條件
+boundary = np.abs(vm_stress - yield_strength) < 10000000  # 設定容許誤差範圍 (5 MPa)
+
+# 提取滿足條件的座標
+sigma1_boundary = sigma1[boundary]
+sigma2_boundary = sigma2[boundary]
+sigma3_boundary = sigma3[boundary]
+
+# 繪圖
+fig = plt.figure(figsize=(10, 8))
+ax = fig.add_subplot(111, projection='3d')
+
+# 繪製邊界點
+scatter = ax.scatter(
+    sigma1_boundary, sigma2_boundary, sigma3_boundary, c='blue', alpha=0.5, s=5, label='Yield Surface'
+)
+
+scatter_data = ax.scatter(
+    s1, s2, s3, c='red', s=50, alpha=1.0, label='Stress Steps'
+)
+
+for i in range(len(s1)):
+    ax.text(
+        s1[i], s2[i], s3[i], f'{i+1}', color='black', fontsize=10, ha='center'
+    )
+
+# 設定坐標軸與標籤
+ax.set_xlabel('$\sigma_1$ (Pa)')
+ax.set_ylabel('$\sigma_2$ (Pa)')
+ax.set_zlabel('$\sigma_3$ (Pa)')
+ax.set_title('Haigh-Westergaard Space: Distortion Energy Yield Criterion')
+ax.legend()
+
+plt.show()
+
+fig = plt.figure(figsize=(10, 8))
+plt.plot(normal_strain, normal_stress, marker='o', linestyle='-', color='blue', label='Stress-Strain Curve')
+
+for x, y in zip(normal_strain, normal_stress):
+    plt.text(x, y, f'({x:.2f}, {y:.2f})', fontsize=10, ha='right', va='bottom')
+# 添加標籤與標題
+plt.xlabel('Normal Strain', fontsize=12)
+plt.ylabel('Normal Stress (Pa)', fontsize=12)
+plt.title('Stress-Strain Curve', fontsize=16)
+plt.legend()
+plt.grid(True, linestyle='--', alpha=0.7)
+
+# 顯示圖表
+plt.show()
+
+fig = plt.figure(figsize=(10, 8))
+plt.plot(shear_strain, shear_stress, marker='o', linestyle='-', color='blue', label='Stress-Strain Curve')
+
+
+for x, y in zip(shear_strain, shear_stress):
+    plt.text(x, y, f'({x:.2f}, {y:.2f})', fontsize=10, ha='right', va='bottom')
+# 添加標籤與標題
+plt.xlabel('Shear Strain', fontsize=12)
+plt.ylabel('Shear Stress (Pa)', fontsize=12)
+plt.title('Stress-Strain Curve', fontsize=16)
+plt.legend()
+plt.grid(True, linestyle='--', alpha=0.7)
+
+# 顯示圖表
+plt.show()
+
+fig = plt.figure(figsize=(10, 8))
+plt.plot(von_strain, von_stress, marker='o', linestyle='-', color='blue', label='Stress-Strain Curve')
+
+
+
+for x, y in zip(von_strain, von_stress):
+    plt.text(x, y, f'({x:.2f}, {y:.2f})', fontsize=10, ha='right', va='bottom')
+# 添加標籤與標題
+plt.xlabel('Von Mises Strain', fontsize=12)
+plt.ylabel('Von Mises Stress (Pa)', fontsize=12)
+plt.title('Stress-Strain Curve', fontsize=16)
+plt.legend()
+plt.grid(True, linestyle='--', alpha=0.7)
+
+# 顯示圖表
+plt.show()
