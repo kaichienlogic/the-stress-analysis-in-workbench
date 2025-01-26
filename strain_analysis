@@ -1,0 +1,109 @@
+import csv
+import re
+import numpy as np
+import json
+from numpy import linalg as LA
+import math
+
+# 文件名
+file_name = "node_data_strain.txt"
+
+# 初始化矩阵存储所有stress值
+strain_matrix = []
+node = []
+
+# 读取文件
+with open(file_name, "r", encoding="utf-8") as file:
+    reader = csv.reader(file)
+    headers = next(reader)  # 读取表头
+    for row in reader:
+        # 提取 stress 栏位的原始数据
+        strain_raw = row[-1]  # 假设 stress 是最后一列
+        # 使用正则表达式提取数值
+        strain_values = re.findall(r"-?\d+\.\d+e[+-]?\d+|-?\d+\.\d+|\d+", strain_raw)
+        strain_array = np.array(strain_values, dtype=float)  # 转换为浮点型数组
+        
+        # 将 stress_array 添加到矩阵
+        
+        # 替换原始行中 stress 数据
+        row[-1] = strain_array
+        strain_matrix.append(strain_array)
+        node_values = [float(x) for x in row[:-1]]
+        node.append(node_values)
+        #print(node)
+
+
+# 将提取的所有 stress 数据转为矩阵形式
+#stress_matrix = np.array(stress_matrix).reshape(-1, len(stress_matrix))  # 根据需求调整矩阵形状
+strain_matrix = np.array(strain_matrix)
+# 输出结果
+rs, cs = strain_matrix.shape
+print(rs)
+print(cs)
+
+node=np.array(node)
+rn, cn = node.shape
+print(rn)
+print(cn)
+
+
+with open('NLIST.lis', 'r') as file:
+    lines = file.readlines()
+
+# 初始化一個列表來存儲節點編號
+node_numbers = []
+
+# 遍歷每一行
+for line in lines:
+    # 使用正則表達式查找行中第一個數字
+    match = re.match(r'\s*(\d+)', line)
+    if match:
+        # 提取匹配的節點編號並添加到列表中
+        node_numbers.append(int(match.group(1)))
+
+# 輸出結果
+print(len(node_numbers))
+node_numbers = np.array(node_numbers)
+
+c=0
+for j in range(rn):
+    if node_numbers[0]==node[j,0]:
+       c=c+1
+
+print(c)
+
+strain=np.zeros((len(node_numbers), 6, c))
+eig=np.zeros((3,3))
+distorsion=0
+
+for j in range(len(node_numbers)):
+    for k in range(c):
+            eig[0,0]=strain_matrix[j+k*len(node_numbers),0]
+            eig[0,1]=strain_matrix[j+k*len(node_numbers),3]
+            eig[0,2]=strain_matrix[j+k*len(node_numbers),5]
+            eig[1,0]=strain_matrix[j+k*len(node_numbers),3]
+            eig[1,1]=strain_matrix[j+k*len(node_numbers),1]
+            eig[1,2]=strain_matrix[j+k*len(node_numbers),4]
+            eig[2,0]=strain_matrix[j+k*len(node_numbers),5]
+            eig[2,1]=strain_matrix[j+k*len(node_numbers),4]
+            eig[2,2]=strain_matrix[j+k*len(node_numbers),2]
+            ea, ee = LA.eig(eig)
+            #print(ea)
+            distorsion=math.sqrt(2*(ea[0])**2+(ea[1])**2+(ea[2])**2)/math.sqrt(3)
+            strain[j,0,k]=distorsion
+            #von-mises
+            distorsion=0
+            strain[j,1,k]=ea[0]
+            #principle 1
+            strain[j,2,k]=ea[1]
+            #principle 2
+            strain[j,3,k]=ea[2]
+            #principle 3
+            strain[j,4,k]=strain_matrix[j+k*len(node_numbers),2]
+            #normal stress/strain
+            strain[j,5,k]=strain_matrix[j+k*len(node_numbers),3]
+            #shear stress/strain
+
+
+with open('strain.json', 'w') as f:
+    json.dump({'strain': strain.tolist()}, f)
